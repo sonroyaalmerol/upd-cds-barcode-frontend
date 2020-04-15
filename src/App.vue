@@ -76,6 +76,7 @@
           </center>
         </v-card>
         <v-card
+          :loading="loading"
           flat
         >
           <div class="d-flex flex-no-wrap justify-space-between">
@@ -83,24 +84,27 @@
               <v-card-title v-if="showStuff"
                 class="ml-12 mt-12 display-2 font-weight-black"
               >
-                <template v-if="welcomeBack && !errorMsg && !checkIn"><b><font color="#69F0AE">IN</font></b></template>
-                <template v-else-if="!welcomeBack && !errorMsg && !checkIn"><b><font color="#FF8A80">OUT</font></b></template>
-                <template v-else-if="welcomeBack && !errorMsg && checkIn">He/she is <b><font color="#69F0AE">IN</font></b>!</template>
-                <template v-else-if="!welcomeBack && !errorMsg && checkIn">He/she is <b><font color="#FF8A80">OUT</font></b>!</template>
-                <template v-else>Error!</template>
+                <transition name="fade">
+                  <template v-if="welcomeBack && !errorMsg && !checkIn"><b><font color="#69F0AE">IN</font></b></template>
+                  <template v-else-if="!welcomeBack && !errorMsg && !checkIn"><b><font color="#FF8A80">OUT</font></b></template>
+                  <template v-else-if="welcomeBack && !errorMsg && checkIn">He/she is <b><font color="#69F0AE">IN</font></b>!</template>
+                  <template v-else-if="!welcomeBack && !errorMsg && checkIn">He/she is <b><font color="#FF8A80">OUT</font></b>!</template>
+                  <template v-else>Error!</template>
+                </transition>
               </v-card-title>
 
               <v-card-subtitle v-if="showStuff" class="display-1 ml-12 mt-4">
-                <p v-if="welcomeBack && !errorMsg && !checkIn">Welcome back!</p>
-                <p v-if="!welcomeBack && !errorMsg && !checkIn">Bye! Have a nice day!</p>
-                <p v-if="errorMsg">{{ errorMsg }}</p>
-                <p v-if="violation > -1">
-                    Sorry! I'm giving you a <b>violation</b> for this one! ({{ intToViolation(violation) }})
-                </p>
-                <p v-if="accountability">You have accountabilities to settle on your eKalay account. Please check them as soon as possible!</p>
+                <transition name="fade">
+                  <p v-if="welcomeBack && !errorMsg && !checkIn">Welcome back!</p>
+                  <p v-if="!welcomeBack && !errorMsg && !checkIn">Bye! Have a nice day!</p>
+                  <p v-if="errorMsg">{{ errorMsg }}</p>
+                  <p v-if="violation > -1">
+                      Sorry! I'm giving you a <b>violation</b> for this one! ({{ intToViolation(violation) }})
+                  </p>
+                  <p v-if="accountability">You have accountabilities to settle on your eKalay account. Please check them as soon as possible!</p>
+                </transition>
               </v-card-subtitle>
             </div>
-
             <v-avatar
               class="ma-4"
               size="350"
@@ -142,6 +146,9 @@
   import axios from 'axios'
 
   const db = new Dexie('inoutDB')
+  const residents = new Dexie('residents')
+  const permits = new Dexie('permits')
+  const violations = new Dexie('violations')
   const Logo = () => import('@/components/layout/Logo')
 
   export default {
@@ -154,11 +161,31 @@
     },
     async created() {
       this.startInterval()
+      this.syncData()
+      this.updateLocalData()
+
       db.version(1).stores({
         entries: '++id, timestamp, krhid, status, sent'
       })
       this.entries = await db.entries.toArray()
+
+      residents.version(1).stores({
+        entries: '_id, displayPhoto, krhid, _inout, firstName, lastName, _pis'
+      })
+      this.residents = await residents.entries.toArray()
+
+      permits.version(1).stores({
+        entries: '_id, dataOne, dataTwo, location, reason, notes, permitType, timestamp, _resident, _pis, processedBy, remarksRA, remarksDM'
+      })
+      this.permits = await permits.entries.toArray()
+
+      violations.version(1).stores({
+        entries: '++id, ismajor, details, timestamp, _resident'
+      })
+      this.violations = await permits.entries.toArray()
+
       this.$refs.krhidField.focus()
+      
     },
     computed: {
       appBarGradient() {
@@ -182,7 +209,7 @@
       }
     },
     data: () => ({
-      baseURL: 'https://api.updkalay.com/api/v2/inoutentries',
+      baseURL: 'https://fhk5z1h9x7.execute-api.ap-southeast-1.amazonaws.com/dev/api/v2/inoutentries',
       drawer: null,
       time: format(new Date(), 'h:mm:ss a'),
       entries: [],
@@ -199,6 +226,9 @@
       checkIn: false,
       showStuff: false,
       image: require('./assets/profpic.png'),
+      permits: [],
+      residents: [],
+      violations: []
     }),
     methods: {
       intToViolation(vio) {
@@ -217,8 +247,22 @@
       startInterval() {
         setInterval(async () => {
           this.time = format(new Date(), 'h:mm:ss a')
-          this.entries = await db.entries.toArray()
           this.$refs.krhidField.focus()
+        }, 1000)
+      },
+      syncData() {
+        setInterval(async () => {
+          var x = await axios.get('https://fhk5z1h9x7.execute-api.ap-southeast-1.amazonaws.com/dev/api/v2/sync/inoutentries', { headers: { 'secret-key': process.env.VUE_APP_SECRET } })
+          await residents.entries.bulkPut(x.data.residents)
+          await permits.entries.bulkPut(x.data.permits)
+        }, 5000)
+      },
+      updateLocalData() {
+        setInterval(async () => {
+          this.entries = await db.entries.toArray()
+          this.violations = await permits.entries.toArray()
+          this.permits = await permits.entries.toArray()
+          this.residents = await residents.entries.toArray()
         }, 1000)
       },
       amIOnline(e) {
@@ -308,3 +352,12 @@
     }
   }
 </script>
+
+<style>
+.fade-enter-active, .fade-leave-active {
+  transition: opacity .5s;
+}
+.fade-enter, .fade-leave-to /* .fade-leave-active below version 2.1.8 */ {
+  opacity: 0;
+}
+</style>
