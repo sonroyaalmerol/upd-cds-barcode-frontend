@@ -209,7 +209,7 @@
       }
     },
     data: () => ({
-      baseURL: 'https://ekalay-backend-k5unt4kh6a-as.a.run.app/api/v2/inoutentries',
+      baseURL: 'https://api.updkalay.com/api/v2/inoutentries',
       drawer: null,
       time: format(new Date(), 'h:mm:ss a'),
       entries: [],
@@ -252,7 +252,7 @@
       },
       syncData() {
         setInterval(async () => {
-          var x = await axios.get('https://ekalay-backend-k5unt4kh6a-as.a.run.app/api/v2/sync/inoutentries', { headers: { 'secret-key': process.env.VUE_APP_SECRET } })
+          var x = await axios.get('https://api.updkalay.com/api/v2/sync/inoutentries', { headers: { 'secret-key': process.env.VUE_APP_SECRET } })
           await residents.entries.bulkPut(x.data.residents)
           await permits.entries.bulkPut(x.data.permits)
         }, 5000)
