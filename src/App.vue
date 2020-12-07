@@ -22,6 +22,7 @@
               <v-list-item-subtitle v-if="entry.status === 1"><b><font color="#69F0AE">IN</font></b></v-list-item-subtitle>
               <v-list-item-subtitle v-else-if="entry.status === 0"><b><font color="#FF8A80">OUT</font></b></v-list-item-subtitle>
               <v-list-item-subtitle v-else-if="entry.status === -1"><b>Not yet submitted!</b></v-list-item-subtitle>
+              <v-list-item-subtitle v-else-if="entry.status === -2"><b>KRHID Not Found!</b></v-list-item-subtitle>
             </v-list-item-content>
           </v-list-item>
         </template>
@@ -272,8 +273,12 @@
         this.loading = true
         var entries = await db.entries.where('sent').equals(0).toArray()
         for (const entry of entries) {
-          var res = await axios.post(this.baseURL, { timestamp: entry.timestamp, krhid: entry.krhid, secretKey: process.env.VUE_APP_SECRET })
-          await db.entries.update(entry.id, { sent: 1, status: res.data.status ? 1 : 0 })
+          try {
+            var res = await axios.post(this.baseURL, { timestamp: entry.timestamp, krhid: entry.krhid, secretKey: process.env.VUE_APP_SECRET })
+            await db.entries.update(entry.id, { sent: 1, status: res.data.status ? 1 : 0 })
+          } catch (err) {
+            await db.entries.update(entry.id, { sent: 1, status: -2 })
+          }
         }
         this.loading = false
         this.$refs.krhidField.focus()
@@ -289,25 +294,29 @@
           })
           var entry = await db.entries.get(currentId)
           if (this.onLine) {
-            const res = await axios.post(this.baseURL, { timestamp: entry.timestamp, krhid: entry.krhid, secretKey: process.env.VUE_APP_SECRET })
-            this.showStuff = true
-            if (res.data.displayPhoto) {
-              this.image = res.data.displayPhoto.replace('/upload/', '/upload/w_400,h_400,c_fill,g_face/')
+            try {
+              const res = await axios.post(this.baseURL, { timestamp: entry.timestamp, krhid: entry.krhid, secretKey: process.env.VUE_APP_SECRET })
+              this.showStuff = true
+              if (res.data.displayPhoto) {
+                this.image = res.data.displayPhoto.replace('/upload/', '/upload/w_400,h_400,c_fill,g_face/')
+              }
+              if (res.status >= 210 && res.status <= 212) {
+                this.violation = res.status
+              }
+              if (res.status === 220) {
+                this.accountability = true
+              }
+              if (res.data.status) {
+                // (Welcome back!)
+                this.welcomeBack = true
+              } else {
+                // (Byebye!)
+                this.welcomeBack = false
+              }
+              await db.entries.update(currentId, { sent: 1, status: res.data.status ? 1 : 0 })
+            } catch (err) {
+              await db.entries.update(entry.id, { sent: 1, status: -2 })
             }
-            if (res.status >= 210 && res.status <= 212) {
-              this.violation = res.status
-            }
-            if (res.status === 220) {
-              this.accountability = true
-            }
-            if (res.data.status) {
-              // (Welcome back!)
-              this.welcomeBack = true
-            } else {
-              // (Byebye!)
-              this.welcomeBack = false
-            }
-            await db.entries.update(currentId, { sent: 1, status: res.data.status ? 1 : 0 })
           } else {
             this.showStuff = true
             this.errorMsg = 'System offline! Your entry has been queued.'
